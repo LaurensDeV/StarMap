@@ -1,35 +1,34 @@
-﻿using Brutal.Collections;
-using HarmonyLib;
+﻿using HarmonyLib;
 using KSA;
-using StarMap.API;
-using StarMap.Core.ModRepository;
-using StarMap.Core.UI;
+using StarMap.API.Interfaces;
 using StarMap.Core.UI.ConfirmRestart;
-using System.ComponentModel.Design;
 using System.Diagnostics;
-using System.Reflection;
 
 namespace StarMap.Core.Patches
 {
-    [HarmonyPatch(typeof(ModLibrary))]
-    internal class ModLibraryPatches
+    internal interface IStarMapPatches
     {
-        [HarmonyPatch(nameof(ModLibrary.LoadAll))]
-        [HarmonyPostfix]
-        public static void AfterLoad()
-        {
-            var modRegistry = StarMapCore.Instance?.Loader.ModRegistry;
-            if (modRegistry is not ModRegistry registry) return;
+        void Init();
+    }
 
-            foreach (var (_, @object, method) in registry.Get<StarMapAllModsLoadedAttribute>())
-            {
-                method.Invoke(@object, []);
-            }
+    internal class StarMapPatches : IStarMapPatches
+    {
+        private readonly IPatchManager _patchManager;
+
+        public StarMapPatches(IPatchManager patchManager)
+        {
+            _patchManager = patchManager;
         }
 
-        [HarmonyPatch(nameof(ModLibrary.PrepareAll))]
-        [HarmonyPrefix]
-        public static void BeforePrepareAll()
+        public void Init()
+        {
+            _patchManager.RegisterStaticVoidPatch(IPatchHelper.PatchType.Prefix, null, typeof(ModLibrary).GetMethod(nameof(ModLibrary.PrepareAll))!, BeforePrepareAll);
+
+            if (DocumentsPathOverride.ShouldApplyOverride())
+                _patchManager.RegisterStaticPatch<string>(IPatchHelper.PatchType.Prefix, null, AccessTools.PropertyGetter(typeof(Constants), nameof(Constants.DocumentsFolderPath)), DocumentsPathOverride.BeforeDocumentsFolderPath);
+        }
+
+        private bool BeforePrepareAll(object[] _)
         {
             static bool wereNewModsEnabled()
             {
@@ -44,7 +43,7 @@ namespace StarMap.Core.Patches
             if (ModLibrary.HasNewMods() && wereNewModsEnabled())
             {
                 var confirmRestart = new ConfirmRestart();
-                while(confirmRestart.Show)
+                while (confirmRestart.Show)
                 {
                     confirmRestart.OnFrame();
                 }
@@ -59,7 +58,8 @@ namespace StarMap.Core.Patches
                     {
                         Console.WriteLine("Unable to get StarMap install location for restart.");
                     }
-                    else {
+                    else
+                    {
                         var startInfo = new ProcessStartInfo
                         {
                             FileName = mainModule.FileName,
@@ -73,6 +73,8 @@ namespace StarMap.Core.Patches
                     Environment.Exit(0);
                 }
             }
+
+            return true;
         }
     }
 }
