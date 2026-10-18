@@ -1,36 +1,23 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using StarMap.API.Interfaces;
+using StarMap.API.Services;
 using StarMap.Core.API;
 using StarMap.Core.ModRepository;
 using StarMap.Core.Patches;
+using StarMap.Core.Services;
 using StarMap.Core.UI;
-using StarMap.Types;
 using System.Runtime.Loader;
 
 namespace StarMap.Core
 {
-    internal interface ICoreService
-    {
-        AssemblyLoadContext CoreAssemblyLoadContext { get; }
-        IServiceProvider CreateModDependencies(RuntimeMod mod);
-    }
-
-    internal class StarMapCore : IStarMapCore, ICoreService
+    internal class StarMapCore : IDisposable
     {
         private readonly IServiceProvider _serviceProvider;
-        private readonly Lock _lock = new();
-        private readonly List<IServiceScope> _modScopes = [];
-
-        private readonly AssemblyLoadContext _coreAssemblyLoadContext;
-
-        public AssemblyLoadContext CoreAssemblyLoadContext => _coreAssemblyLoadContext;
 
         public StarMapCore(AssemblyLoadContext coreAssemblyLoadContext)
         {
-            _coreAssemblyLoadContext = coreAssemblyLoadContext;
-
             var serviceCollection = new ServiceCollection();
-            serviceCollection.AddSingleton<ICoreService>(this);
+            serviceCollection.AddKeyedSingleton("Core", coreAssemblyLoadContext);
+            serviceCollection.AddSingleton<IServiceProviderService, ServiceProviderService>();
             serviceCollection.AddSingleton<IPatchManager, PatchManager>();
             serviceCollection.AddSingleton<IModsLoader, ModsLoader>();
             serviceCollection.AddSingleton<IStarMapPatches, StarMapPatches>();
@@ -40,42 +27,29 @@ namespace StarMap.Core
             serviceCollection.AddScoped<IPatchService, PatchService>();
             serviceCollection.AddScoped<IModMenuService, ModMenuService>();
 
+            serviceCollection.AddSingleton<ICoreService, CoreService>();
+
             _serviceProvider = serviceCollection.BuildServiceProvider();
-        }
 
-        public void Init()
-        {
-            _serviceProvider.GetRequiredService<IStarMapPatches>().Init();
-            _serviceProvider.GetRequiredService<IModsLoader>().Init();
-        }
-
-        public void DeInit()
-        {
-            lock (_lock)
+            try
             {
-                foreach(var scope in _modScopes) 
-                {
-                    scope.Dispose();
-                }
+                _serviceProvider.GetRequiredService<ICoreService>().Init();
+            }
+            catch
+            {
+                ((IDisposable)_serviceProvider).Dispose();
+                throw;
             }
 
-            _serviceProvider.GetRequiredService<IModsLoader>().Dispose();
         }
 
-        public IServiceProvider CreateModDependencies(RuntimeMod mod)
+        public void Dispose()
         {
-            var scope = _serviceProvider.CreateScope();
-
-            scope.ServiceProvider.GetRequiredService<IModContext>().Mod = mod;
-
-            lock (_lock)
-            {
-                _modScopes.Add(scope);
-            }
-
-            return scope.ServiceProvider;
+            ((IDisposable)_serviceProvider).Dispose();
         }
 
-        
+
+
+
     }
 }
