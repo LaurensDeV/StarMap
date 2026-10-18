@@ -73,7 +73,7 @@ namespace StarMap.Core.UI.ConfirmRestart
                         RenderPass = Program.MainPass.Pass,
                         Framebuffer = resources.Framebuffer,
                         RenderArea = new VkRect2D(this._renderer.Extent),
-                        ClearValues = (VkClearValue*)Program.MainPass.ClearValues.Ptr,
+                        ClearValues = (VkClearValue*)Program.MainPass.ClearValues!.Ptr,
                         ClearValueCount = 2
                     };
                     commandBuffer.Reset();
